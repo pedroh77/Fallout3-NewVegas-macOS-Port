@@ -6,19 +6,20 @@
 # into a standalone Apple Silicon macOS bundle ("Fallout New Vegas.app",
 # "Fallout 3.app", or "Skyrim.app").
 #
-# Usage: quick-install.sh [--game fnv|fallout3|skyrim] [--download|--download-steam|--download-gog] [--dmg] [--keep-cache] [--keep-ghidra] [--unpack-drm] [--no-steam] [--with-steam] [--with-nvse] [-h|--help] [game_path]
+# Usage: quick-install.sh [--game fnv|fallout3|skyrim] [--download|--download-steam|--download-gog] [--lang <code|name>] [--dmg] [--keep-cache] [--keep-ghidra] [--unpack-drm] [--no-steam] [--with-steam] [-h|--help] [game_path]
 #   --game <id>       select game explicitly: fnv, fallout3, or skyrim (default:
 #                     auto-detect; a numbered menu appears when several are found)
 #   --download        download your Windows copy interactively from Steam or GOG
 #   --download-steam  download directly from Steam via steamcmd
 #   --download-gog    download Fallout 3 / FNV directly from GOG via gogdl
+#   --lang <lang>     language for Steam/GOG downloads: en (default), fr, de, es, it,
+#                     pl, cs/cz, ru, ja (varies by game/store; full English names also accepted)
 #   --dmg             also wrap the app in "<App Name>.dmg"
 #   --keep-cache      keep ~/Library/Caches/fnv-macos after a successful build (for faster rebuilds)
 #   --keep-ghidra     keep the Ghidra project and P-code JSONL after translation (implies --keep-cache)
 #   --unpack-drm      unattended: allow downloading Steamless + Mono to strip SteamStub DRM
 #   --no-steam        keep Steam builds in offline mode (skip Steam launcher, overlay & libsteam_api.dylib; already default for Fallout 3)
 #   --with-steam      opt into Steam launcher & Overlay for Fallout 3 Steam builds (off by default)
-#   --with-nvse       opt into experimental NVSE-lite native script extender for Fallout: New Vegas (off by default)
 #   -h, --help        show help text and exit
 #   game_path         optional GOG installer (.exe), folder containing FalloutNV.exe,
 #                     Fallout3.exe, or TESV.exe + Data/, or an existing app bundle.
@@ -216,13 +217,18 @@ Options:
   --download                    Download game files interactively (Steam or GOG)
   --download-steam              Download Windows game files from Steam via steamcmd
   --download-gog                Download Fallout 3 / FNV from GOG via gogdl
+  --lang <code|name>            Language for Steam/GOG downloads (default: en)
+                                  Fallout 3 (Steam/GOG): en, fr, de, es, it
+                                  FNV (Steam 22380): en, fr, de, es, it
+                                  FNV (Steam PCR 22490): en, pl, cs, ru
+                                  FNV (GOG): en, fr, de, es, it, pl, cs, ru
+                                  Skyrim (Steam): en, fr, de, es, it, pl, cs, ru, ja
   --dmg                         Also wrap the built app in "<App Name>.dmg"
   --keep-cache                  Keep ~/Library/Caches/fnv-macos after building
   --keep-ghidra                 Keep Ghidra project & P-code JSONL (implies --keep-cache)
   --unpack-drm                  Unattended: strip SteamStub DRM with Steamless + Mono
   --no-steam                    Keep Steam builds offline (skip launcher & overlay)
   --with-steam                  Enable Steam launcher & Overlay for Fallout 3 Steam
-  --with-nvse                   Enable experimental NVSE-lite script extender (FNV only)
   -h, --help                    Show this help message and exit
 
 Arguments:
@@ -231,8 +237,8 @@ Arguments:
 Examples:
   ./quick-install.sh
   ./quick-install.sh --download
-  ./quick-install.sh --download-gog --game fnv
-  ./quick-install.sh --download-steam --game skyrim
+  ./quick-install.sh --download-gog --game fnv --lang fr
+  ./quick-install.sh --download-steam --game skyrim --lang de
   ./quick-install.sh --game fallout3
   ./quick-install.sh ~/Downloads/setup_fallout_3_*.exe
 EOF
@@ -249,9 +255,14 @@ KEEP_GHIDRA=no
 UNPACK_DRM=no
 NO_STEAM=no
 WITH_STEAM=no
-WITH_NVSE=no
 GAME_ID=""
 GAME_ARG=""
+LANG_RAW=""
+LANG_EXPLICIT=no
+LANG_CODE="en"
+LANG_NAME="English"
+STEAM_LANG="english"
+GOG_LANG="en-US"
 BREW_INSTALLED=()
 # Packages installed by any run are remembered outside CACHE_ROOT: a run that fails after the
 # installs must not lose the "how to uninstall" hint when the script is run again (issue #5).
@@ -270,13 +281,26 @@ while [ $# -gt 0 ]; do
 		--unpack-drm) UNPACK_DRM=yes ;;
 		--no-steam) NO_STEAM=yes ;;
 		--with-steam) WITH_STEAM=yes ;;
-		--with-nvse) WITH_NVSE=yes ;;
 		--game)
 			shift
 			[ $# -gt 0 ] || die "--game requires an argument (fnv, fallout3, or skyrim)."
 			GAME_ID="$1"
 			;;
 		--game=*) GAME_ID="${1#--game=}" ;;
+		--lang|--language)
+			shift
+			[ $# -gt 0 ] || die "--lang requires an argument (e.g. en, fr, de, es, it, pl, cs, ru, ja)."
+			LANG_RAW="$1"
+			LANG_EXPLICIT=yes
+			;;
+		--lang=*)
+			LANG_RAW="${1#--lang=}"
+			LANG_EXPLICIT=yes
+			;;
+		--language=*)
+			LANG_RAW="${1#--language=}"
+			LANG_EXPLICIT=yes
+			;;
 		-h|--help) usage; exit 0 ;;
 		-*) die "Unknown option: $1" ;;
 		*) GAME_ARG="$1" ;;
@@ -289,14 +313,107 @@ case "$GAME_ID" in
 	*) die "Unsupported --game value '$GAME_ID' (expected fnv, fallout3, or skyrim)." ;;
 esac
 
+if [ "$LANG_EXPLICIT" = yes ]; then
+	LANG_NORM="$(printf '%s' "$LANG_RAW" | tr '[:upper:]' '[:lower:]')"
+	case "$LANG_NORM" in
+		en|en-us|en_us|english)
+			LANG_CODE="en"; LANG_NAME="English"; STEAM_LANG="english"; GOG_LANG="en-US" ;;
+		fr|fr-fr|fr_fr|french|francais|français)
+			LANG_CODE="fr"; LANG_NAME="French"; STEAM_LANG="french"; GOG_LANG="fr-FR" ;;
+		de|de-de|de_de|german|deutsch)
+			LANG_CODE="de"; LANG_NAME="German"; STEAM_LANG="german"; GOG_LANG="de-DE" ;;
+		es|es-es|es_es|spanish|espanol|español)
+			LANG_CODE="es"; LANG_NAME="Spanish"; STEAM_LANG="spanish"; GOG_LANG="es-ES" ;;
+		it|it-it|it_it|italian|italiano)
+			LANG_CODE="it"; LANG_NAME="Italian"; STEAM_LANG="italian"; GOG_LANG="it-IT" ;;
+		pl|pl-pl|pl_pl|polish|polski)
+			LANG_CODE="pl"; LANG_NAME="Polish"; STEAM_LANG="polish"; GOG_LANG="pl-PL" ;;
+		cs|cz|cs-cz|cs_cz|czech)
+			LANG_CODE="cs"; LANG_NAME="Czech"; STEAM_LANG="czech"; GOG_LANG="cs-CZ" ;;
+		ru|ru-ru|ru_ru|russian)
+			LANG_CODE="ru"; LANG_NAME="Russian"; STEAM_LANG="russian"; GOG_LANG="ru-RU" ;;
+		ja|jp|ja-jp|ja_jp|japanese)
+			LANG_CODE="ja"; LANG_NAME="Japanese"; STEAM_LANG="japanese"; GOG_LANG="" ;;
+		*)
+			die "Unsupported --lang value '$LANG_RAW'." \
+				"Supported codes: en, fr, de, es, it, pl, cs (or cz), ru, ja (full English names also accepted)." ;;
+	esac
+fi
+
+validate_download_language() {
+	local store="$1" game="$2" appid="${3:-}"
+	if [ "$store" = gog ]; then
+		if [ "$game" = fallout3 ]; then
+			case "$LANG_CODE" in
+				en|fr|de|es|it) return 0 ;;
+				*) die "Fallout 3: Game of the Year Edition on GOG does not support --lang $LANG_CODE ($LANG_NAME)." \
+					"Supported GOG languages for Fallout 3: en, fr, de, es, it." ;;
+			esac
+		elif [ "$game" = fnv ]; then
+			case "$LANG_CODE" in
+				en|fr|de|es|it|pl|cs|ru) return 0 ;;
+				*) die "Fallout: New Vegas Ultimate Edition on GOG does not support --lang $LANG_CODE ($LANG_NAME)." \
+					"Supported GOG languages for Fallout: New Vegas: en, fr, de, es, it, pl, cs, ru." ;;
+			esac
+		fi
+	elif [ "$store" = steam ]; then
+		if [ "$game" = fallout3 ]; then
+			case "$LANG_CODE" in
+				en|fr|de|es|it) return 0 ;;
+				*) die "Fallout 3 on Steam (AppID ${appid:-22370}) does not support --lang $LANG_CODE ($LANG_NAME)." \
+					"Supported Steam languages for Fallout 3: en, fr, de, es, it." ;;
+			esac
+		elif [ "$game" = fnv ]; then
+			if [ "$appid" = "22490" ]; then
+				case "$LANG_CODE" in
+					en|pl|cs|ru) return 0 ;;
+					*) die "Fallout: New Vegas PCR (Steam AppID 22490) only supports: en, pl, cs, ru." \
+						"For $LANG_NAME, use the Global Steam edition (AppID 22380) or GOG (--download-gog)." ;;
+				esac
+			else
+				case "$LANG_CODE" in
+					en|fr|de|es|it) return 0 ;;
+					pl|cs|ru)
+						die "Fallout: New Vegas Global (Steam AppID 22380) does not include $LANG_NAME." \
+							"Polish, Czech, and Russian on Steam require the regional PCR edition (AppID 22490), or use GOG (--download-gog --game fnv --lang $LANG_CODE)." ;;
+					*) die "Fallout: New Vegas on Steam does not support --lang $LANG_CODE ($LANG_NAME)." \
+						"Supported languages: en, fr, de, es, it (Global 22380) or en, pl, cs, ru (PCR 22490)." ;;
+				esac
+			fi
+		elif [ "$game" = skyrim ]; then
+			case "$LANG_CODE" in
+				en|fr|de|es|it|pl|cs|ru|ja) return 0 ;;
+				*) die "Skyrim (32-bit LE, Steam AppID 72850) does not support --lang $LANG_CODE ($LANG_NAME)." \
+					"Supported Steam languages for Skyrim: en, fr, de, es, it, pl, cs, ru, ja." ;;
+			esac
+		fi
+	fi
+	return 0
+}
+
 if [ -n "$DOWNLOAD_MODE" ] && [ -n "$GAME_ARG" ]; then
 	die "Cannot combine --download / --download-steam / --download-gog with an explicit game path."
 fi
 if [ "$DOWNLOAD_MODE" = gog ] && [ "$GAME_ID" = skyrim ]; then
 	die "The Elder Scrolls V: Skyrim (32-bit LE) is only available on Steam (use --download-steam or --download)."
 fi
+if [ "$DOWNLOAD_MODE" = gog ] && [ -n "$GAME_ID" ]; then
+	validate_download_language gog "$GAME_ID"
+fi
+if [ "$DOWNLOAD_MODE" = steam ] && [ "$GAME_ID" = fallout3 ]; then
+	validate_download_language steam fallout3 22370
+fi
+if [ "$DOWNLOAD_MODE" = steam ] && [ "$GAME_ID" = skyrim ]; then
+	validate_download_language steam skyrim 72850
+fi
+if [ "$DOWNLOAD_MODE" = steam ] && [ "$GAME_ID" = fnv ] && [ "$LANG_CODE" = ja ]; then
+	validate_download_language steam fnv 22380
+fi
 if [ -n "$DOWNLOAD_MODE" ] && [ ! -t 0 ]; then
 	die "--download requires an interactive terminal (Steam/GOG login requires interactive prompts)."
+fi
+if [ "$LANG_EXPLICIT" = yes ] && [ -z "$DOWNLOAD_MODE" ]; then
+	warn "--lang $LANG_CODE ($LANG_NAME) only applies when downloading via --download / --download-steam / --download-gog (local files keep their existing language)."
 fi
 
 ensure_brew_in_path() {
@@ -654,8 +771,8 @@ select_steam_download_target() {
 	if [ "$GAME_ID" = fnv ]; then
 		while true; do
 			printf '\n%sSelect Fallout: New Vegas Steam edition:%s\n' "$BOLD" "$RESET"
-			printf '  %s1)%s Global / Ultimate (AppID 22380) [default]\n' "$GOLD" "$RESET"
-			printf '  %s2)%s Regional PCR edition (AppID 22490)\n' "$GOLD" "$RESET"
+			printf '  %s1)%s Global / Ultimate (AppID 22380 — en/fr/de/es/it) [default]\n' "$GOLD" "$RESET"
+			printf '  %s2)%s Regional PCR edition (AppID 22490 — en/pl/cs/ru)\n' "$GOLD" "$RESET"
 			printf '  Select [1-2]: '
 			read -r choice || die "Aborted."
 			case "$choice" in
@@ -718,6 +835,7 @@ select_steam_download_target() {
 
 download_game_via_steamcmd() {
 	select_steam_download_target
+	validate_download_language steam "$STEAM_DL_GAME" "$STEAM_DL_APPID"
 
 	ensure_brew_in_path
 	if ! command -v steamcmd >/dev/null 2>&1; then
@@ -733,7 +851,7 @@ download_game_via_steamcmd() {
 		ok "Found steamcmd ($(command -v steamcmd))"
 	fi
 
-	printf '\n  %sDownloading %s via SteamCMD (AppID %s)%s\n' "$BOLD" "$(game_display_name "$STEAM_DL_GAME")" "$STEAM_DL_APPID" "$RESET"
+	printf '\n  %sDownloading %s via SteamCMD (AppID %s, language: %s)%s\n' "$BOLD" "$(game_display_name "$STEAM_DL_GAME")" "$STEAM_DL_APPID" "$LANG_NAME" "$RESET"
 	if [ "$STEAM_DL_GAME" = skyrim ]; then
 		printf '    • Requires original 32-bit Skyrim (AppID 72850) on your Steam account — not Special/Anniversary Edition.\n'
 	fi
@@ -756,7 +874,11 @@ download_game_via_steamcmd() {
 
 	local download_dir steam_rc files_ok retry_choice new_user
 	while true; do
-		download_dir="$CACHE_ROOT/steam-download/$STEAM_DL_APPID"
+		if [ "$LANG_CODE" = en ]; then
+			download_dir="$CACHE_ROOT/steam-download/$STEAM_DL_APPID"
+		else
+			download_dir="$CACHE_ROOT/steam-download/${STEAM_DL_APPID}-${LANG_CODE}"
+		fi
 		mkdir -p "$download_dir"
 		if [ -d "$download_dir/steamapps" ] && [ ! -f "$download_dir/.steamcmd-complete" ]; then
 			printf '  %sNote:%s Resuming/validating previous download in %s\n' "$DIM" "$RESET" "$download_dir"
@@ -769,7 +891,7 @@ download_game_via_steamcmd() {
 			+@sSteamCmdForcePlatformType windows \
 			+force_install_dir "$download_dir" \
 			+login "$steam_user" \
-			+app_update "$STEAM_DL_APPID" validate \
+			+app_update "$STEAM_DL_APPID" -language "$STEAM_LANG" validate \
 			+quit || steam_rc=$?
 		printf '\n'
 
@@ -814,6 +936,7 @@ download_game_via_steamcmd() {
 					;;
 				[cC])
 					select_steam_download_target
+					validate_download_language steam "$STEAM_DL_GAME" "$STEAM_DL_APPID"
 					break
 					;;
 				[qQ]|[qQ][uU][iI][tT])
@@ -1025,20 +1148,25 @@ find_gogdl_game_dir() {
 
 download_game_via_gogdl() {
 	select_gog_download_target
+	validate_download_language gog "$GOG_DL_GAME"
 	ensure_gogdl
 	authenticate_gog_isolated
 
 	local download_dir gog_rc found_dir retry_choice
 	while true; do
-		download_dir="$CACHE_ROOT/gog-download/$GOG_DL_ID"
+		if [ "$LANG_CODE" = en ]; then
+			download_dir="$CACHE_ROOT/gog-download/$GOG_DL_ID"
+		else
+			download_dir="$CACHE_ROOT/gog-download/${GOG_DL_ID}-${LANG_CODE}"
+		fi
 		mkdir -p "$download_dir"
 		if [ ! -f "$download_dir/.gogdl-complete" ] && [ -n "$(ls -A "$download_dir" 2>/dev/null)" ]; then
 			printf '  %sNote:%s Resuming/verifying previous download in %s\n' "$DIM" "$RESET" "$download_dir"
 		fi
 		rm -f "$download_dir/.gogdl-complete"
 
-		printf '\n  %sDownloading %s via gogdl (GOG ID %s)%s\n' \
-			"$BOLD" "$(game_display_name "$GOG_DL_GAME")" "$GOG_DL_ID" "$RESET"
+		printf '\n  %sDownloading %s via gogdl (GOG ID %s, language: %s)%s\n' \
+			"$BOLD" "$(game_display_name "$GOG_DL_GAME")" "$GOG_DL_ID" "$LANG_NAME" "$RESET"
 		printf '    • Files download into temporary cache and are moved into the app bundle.\n\n'
 
 		gog_rc=0
@@ -1046,7 +1174,7 @@ download_game_via_gogdl() {
 			--auth-config-path "$GOG_AUTH_FILE" \
 			download "$GOG_DL_ID" \
 			--platform windows \
-			--lang en \
+			--lang "$GOG_LANG" \
 			--with-dlcs \
 			--path "$download_dir" || gog_rc=$?
 		printf '\n'
@@ -1079,6 +1207,7 @@ download_game_via_gogdl() {
 					;;
 				[cC])
 					select_gog_download_target
+					validate_download_language gog "$GOG_DL_GAME"
 					break
 					;;
 				[qQ]|[qQ][uU][iI][tT])
@@ -1145,18 +1274,16 @@ else
 			"$HOME/Steam/fnv"
 			"$HOME/Documents/Fallout New Vegas"
 		)
-		for steam_dl in "$CACHE_ROOT/steam-download/22380" "$CACHE_ROOT/steam-download/22490"; do
+		shopt -s nullglob
+		for steam_dl in "$CACHE_ROOT/steam-download/22380" "$CACHE_ROOT/steam-download/22380-"* \
+		                "$CACHE_ROOT/steam-download/22490" "$CACHE_ROOT/steam-download/22490-"*; do
 			[ -f "$steam_dl/.steamcmd-complete" ] && CANDIDATES+=("$steam_dl")
 		done
-		if [ -f "$CACHE_ROOT/gog-download/$GOG_FNV_ID/.gogdl-complete" ]; then
-			shopt -s nullglob
-			CANDIDATES+=(
-				"$CACHE_ROOT/gog-download/$GOG_FNV_ID"
-				"$CACHE_ROOT/gog-download/$GOG_FNV_ID"/*
-			)
-			shopt -u nullglob
-		fi
-		shopt -s nullglob
+		for gog_dl in "$CACHE_ROOT/gog-download/$GOG_FNV_ID" "$CACHE_ROOT/gog-download/$GOG_FNV_ID-"*; do
+			if [ -f "$gog_dl/.gogdl-complete" ]; then
+				CANDIDATES+=("$gog_dl" "$gog_dl"/*)
+			fi
+		done
 		CANDIDATES+=(
 			"$HOME"/Downloads/depots/22380/*
 			"$HOME"/depots/22380/*
@@ -1182,18 +1309,16 @@ else
 			"$HOME/Steam/steamapps/common/Fallout 3 goty"
 			"$HOME/Documents/Fallout 3"
 		)
-		for steam_dl in "$CACHE_ROOT/steam-download/22370" "$CACHE_ROOT/steam-download/22300"; do
+		shopt -s nullglob
+		for steam_dl in "$CACHE_ROOT/steam-download/22370" "$CACHE_ROOT/steam-download/22370-"* \
+		                "$CACHE_ROOT/steam-download/22300" "$CACHE_ROOT/steam-download/22300-"*; do
 			[ -f "$steam_dl/.steamcmd-complete" ] && CANDIDATES+=("$steam_dl")
 		done
-		if [ -f "$CACHE_ROOT/gog-download/$GOG_FO3_ID/.gogdl-complete" ]; then
-			shopt -s nullglob
-			CANDIDATES+=(
-				"$CACHE_ROOT/gog-download/$GOG_FO3_ID"
-				"$CACHE_ROOT/gog-download/$GOG_FO3_ID"/*
-			)
-			shopt -u nullglob
-		fi
-		shopt -s nullglob
+		for gog_dl in "$CACHE_ROOT/gog-download/$GOG_FO3_ID" "$CACHE_ROOT/gog-download/$GOG_FO3_ID-"*; do
+			if [ -f "$gog_dl/.gogdl-complete" ]; then
+				CANDIDATES+=("$gog_dl" "$gog_dl"/*)
+			fi
+		done
 		CANDIDATES+=(
 			"$HOME"/Downloads/depots/22370/*
 			"$HOME"/depots/22370/*
@@ -1212,9 +1337,10 @@ else
 			"$HOME/Library/Application Support/Steam/steamapps/common/Skyrim"
 			"$HOME/Steam/steamapps/common/Skyrim"
 		)
-		[ -f "$CACHE_ROOT/steam-download/72850/.steamcmd-complete" ] && \
-			CANDIDATES+=("$CACHE_ROOT/steam-download/72850")
 		shopt -s nullglob
+		for steam_dl in "$CACHE_ROOT/steam-download/72850" "$CACHE_ROOT/steam-download/72850-"*; do
+			[ -f "$steam_dl/.steamcmd-complete" ] && CANDIDATES+=("$steam_dl")
+		done
 		CANDIDATES+=(
 			"$HOME"/Downloads/depots/72850/*
 			"$HOME"/depots/72850/*
@@ -1871,16 +1997,6 @@ elif [ "$GAME_ID" = fallout3 ] && [ "$NO_STEAM" != yes ] && [ "$ACTUAL_SHA" = "$
 	ok "Building Fallout 3 standalone offline (default; pass --with-steam for Steam Overlay)"
 fi
 
-NVSE_BUILD_ARGS=()
-if [ "$WITH_NVSE" = yes ]; then
-	if [ "$GAME_ID" = fnv ]; then
-		NVSE_BUILD_ARGS=(--with-nvse)
-		ok "Experimental NVSE-lite script extender enabled (--with-nvse)"
-	else
-		warn "--with-nvse currently applies only to Fallout: New Vegas; ignoring for $GAME_ID"
-	fi
-fi
-
 printf '  %sCompiling translation units with Apple Clang (cached incrementally)...%s\n' "$DIM" "$RESET"
 python3 "$SCRIPT_DIR/tools/build.py" game \
 	--game "$GAME_ID" \
@@ -1892,7 +2008,6 @@ python3 "$SCRIPT_DIR/tools/build.py" game \
 	--out "$BUILD_OUT" \
 	--app-name "$APP_NAME" \
 	${STEAM_BUILD_ARGS[@]+"${STEAM_BUILD_ARGS[@]}"} \
-	${NVSE_BUILD_ARGS[@]+"${NVSE_BUILD_ARGS[@]}"} \
 	--no-call-trace
 
 APP="$BUILD_OUT/$APP_NAME.app"

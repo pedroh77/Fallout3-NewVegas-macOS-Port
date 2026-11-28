@@ -217,6 +217,10 @@ Multiple game installations found:
 Additional flags:
 
 ```sh
+# Download in another language (e.g. French, German, Spanish, Italian, Polish, Czech, Russian, Japanese)
+./quick-install.sh --download-gog --game fnv --lang fr
+./quick-install.sh --download-steam --game skyrim --lang de
+
 # FNV or Skyrim — opt out of Steam launcher, Overlay & libsteam_api.dylib
 ./quick-install.sh --no-steam
 
@@ -227,6 +231,12 @@ Additional flags:
 ./quick-install.sh --unpack-drm --dmg
 ./quick-install.sh --keep-cache   # or FNV_KEEP_CACHE=1 / SKYRIM_KEEP_CACHE=1
 ```
+
+* **Download languages (`--lang <code|name>`):** defaults to `en`. Supported languages by game and store:
+  * **Fallout 3 (Steam / GOG):** `en`, `fr`, `de`, `es`, `it`
+  * **Fallout: New Vegas:** `en`, `fr`, `de`, `es`, `it` on Steam Global (`22380`); `en`, `pl`, `cs`, `ru` on Steam PCR (`22490`); all eight (`en`, `fr`, `de`, `es`, `it`, `pl`, `cs`, `ru`) on GOG (`1454587428`)
+  * **Skyrim (Steam `72850`):** `en`, `fr`, `de`, `es`, `it`, `pl`, `cs`, `ru`, `ja`
+  * If switching languages on an existing installation, remove the old `FALLOUT.INI` / `Skyrim.ini` under `~/Library/Application Support/<Game>/UserDocuments/My Games/<Game>/` (keep `Saves/`) so the new localized default INI takes effect.
 
 > **Note on disk usage & automatic cleanup:** to avoid duplicating 9–12 GB per title, `quick-install.sh` **moves** playable files into `<App>.app/Contents/Resources/GameData/`, **removes leftover Windows-only files** and Steam's matching `appmanifest_<appid>.acf` (`22370`, `22300`, `22380`, `22490`, `72850`), and **deletes `~/Library/Caches/fnv-macos`** upon success (unless `--keep-cache` / `FNV_KEEP_CACHE=1` / `SKYRIM_KEEP_CACHE=1`). Original GOG offline installers (`setup_*.exe` + `.bin`) and existing `.app` bundles are never deleted automatically.
 
@@ -244,7 +254,8 @@ On MacBooks with a camera housing (notch), the app opts out of macOS's compatibi
 * **Upscaler / Anti-Aliasing / Render Scale:** `MetalFX Spatial` or `Bilinear`; `Off`, `SMAA`, or `FXAA`; `50–100 %` internal render scale.
 * **Field of View:** Presets `Original (75° / 55°)`, `Expanded (90° / 60°)`, `Wide (100° / 65°)`, `Custom`, or `Keep FALLOUT.INI`, synchronized with **World FOV** (`75°–105°`, `fDefaultWorldFOV`) and **1st-Person FOV** (`55°–75°`, `fDefault1stPersonFOV`).
 * **Window / Mouse:** Fullscreen toggle and Disable macOS mouse acceleration toggle (on by default).
-* **Environment overrides:** `FNV_PRESET=keep|low|medium|high|ultra`, `FNV_RENDER_SCALE=50..100`, `FNV_UPSCALER=metalfx|bilinear`, `FNV_AA=off|smaa|fxaa`, `FNV_FOV=75..105`, `FNV_1ST_PERSON_FOV=55..75`, `FNV_MOUSE_ACCEL=0|1`, `FNV_WINDOWED=1`, `FNV_NOVSYNC=1`, `FNV_OUTPUT_WIDTH`/`FNV_OUTPUT_HEIGHT`, `FNV_SKIP_LAUNCHER=1`, `FNV_STEAM_NO_OVERLAY=1`, `FNV_STEAM_DISABLE=1`, `FNV_USER_DIR`, `FNV_ROOT`.
+* **NVSE mode (experimental, Fallout: New Vegas only):** Off by default. Enables a built-in native script-extender subset (no x86 DLL loader) for pure-script mods; currently only **Sprint Mod** is confirmed working and supported. Can also be toggled via `FNV_SCRIPT_EXT=1` / `0`.
+* **Environment overrides:** `FNV_PRESET=keep|low|medium|high|ultra`, `FNV_RENDER_SCALE=50..100`, `FNV_UPSCALER=metalfx|bilinear`, `FNV_AA=off|smaa|fxaa`, `FNV_FOV=75..105`, `FNV_1ST_PERSON_FOV=55..75`, `FNV_MOUSE_ACCEL=0|1`, `FNV_SCRIPT_EXT=0|1`, `FNV_WINDOWED=1`, `FNV_NOVSYNC=1`, `FNV_OUTPUT_WIDTH`/`FNV_OUTPUT_HEIGHT`, `FNV_SKIP_LAUNCHER=1`, `FNV_STEAM_NO_OVERLAY=1`, `FNV_STEAM_DISABLE=1`, `FNV_USER_DIR`, `FNV_ROOT`.
 
 ### Skyrim (`OptionsSkyrim.m`)
 
