@@ -31,11 +31,17 @@
 #define GAME_PREF_PREFIX @"FNV"
 #endif
 
+typedef NS_ENUM(NSInteger, FNVDisplayMode) {
+    FNVDisplayModeWindowed = 0,
+    FNVDisplayModeFullscreen = 1,
+    FNVDisplayModeBorderlessFullscreen = 2,
+};
+
 typedef struct {
     unsigned renderScale;
     int upscaler;
     int antiAliasing;
-    BOOL fullscreen;
+    FNVDisplayMode displayMode;
 } FNVLaunchSettings;
 
 #ifndef FNV_PROBE
@@ -46,6 +52,7 @@ void FNVApplyIniSettings(NSMutableArray<NSString *> *lines,
 
 - (instancetype)initWithNativeW:(unsigned)nativeW
                         nativeH:(unsigned)nativeH
+                     fullPanelH:(unsigned)fullPanelH
                        backingW:(unsigned)backingW
                        backingH:(unsigned)backingH
                       refreshHz:(int)refreshHz;

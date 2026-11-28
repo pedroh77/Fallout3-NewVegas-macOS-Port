@@ -69,7 +69,7 @@ typedef struct {
     int fovPreset;               // 0=Keep Skyrim.ini, 1=Original, 2=Expanded, 3=Wide, 4=Custom
     int worldFov;                // 65..105 (fDefaultWorldFOV / fDefaultFOV)
     int firstPersonFov;          // 65..95  (fDefault1stPersonFOV)
-    BOOL fullscreen;
+    FNVDisplayMode displayMode;
     BOOL mouseAcceleration;
     BOOL skipLauncher;
 } SkyrimOptions;
@@ -273,8 +273,16 @@ static SkyrimOptions loadSkyrimOptions(unsigned nativeW) {
     } else if (opts.fovPreset == 4) {
         opts.fovPreset = matchingSkyrimFovPreset(opts.worldFov, opts.firstPersonFov);
     }
-    id fsObj = [ud objectForKey:kPrefFullscreen];
-    opts.fullscreen = fsObj ? [fsObj boolValue] : YES;
+    id dmObj = [ud objectForKey:@"SkyrimDisplayMode"];
+    if (dmObj) {
+        NSInteger dm = [dmObj integerValue];
+        opts.displayMode = (dm >= FNVDisplayModeWindowed && dm <= FNVDisplayModeBorderlessFullscreen)
+            ? (FNVDisplayMode)dm
+            : FNVDisplayModeFullscreen;
+    } else {
+        id fsObj = [ud objectForKey:kPrefFullscreen];
+        opts.displayMode = (!fsObj || [fsObj boolValue]) ? FNVDisplayModeFullscreen : FNVDisplayModeWindowed;
+    }
     id maObj = [ud objectForKey:kPrefMouseAccel];
     opts.mouseAcceleration = maObj ? [maObj boolValue] : NO;
     id skObj = [ud objectForKey:kPrefSkipLauncher];
@@ -313,7 +321,11 @@ static SkyrimOptions loadSkyrimOptions(unsigned nativeW) {
     }
     const char *envMA = getenv("SKYRIM_MOUSE_ACCEL");
     if (envMA && envMA[0]) opts.mouseAcceleration = (atoi(envMA) != 0);
-    if (getenv("FNV_WINDOWED")) opts.fullscreen = NO;
+    const char *envBorderless = getenv("FNV_BORDERLESS");
+    if (envBorderless && envBorderless[0] && atoi(envBorderless) != 0) {
+        opts.displayMode = FNVDisplayModeBorderlessFullscreen;
+    }
+    if (getenv("FNV_WINDOWED")) opts.displayMode = FNVDisplayModeWindowed;
     return opts;
 }
 
@@ -347,7 +359,8 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     [ud setInteger:opts.fovPreset forKey:kPrefFovPreset];
     [ud setInteger:opts.worldFov forKey:kPrefWorldFov];
     [ud setInteger:opts.firstPersonFov forKey:kPrefFirstPersonFov];
-    [ud setBool:opts.fullscreen forKey:kPrefFullscreen];
+    [ud setInteger:opts.displayMode forKey:@"SkyrimDisplayMode"];
+    [ud setBool:(opts.displayMode != FNVDisplayModeWindowed) forKey:kPrefFullscreen];
     [ud setBool:opts.mouseAcceleration forKey:kPrefMouseAccel];
     [ud setBool:opts.skipLauncher forKey:kPrefSkipLauncher];
     [ud synchronize];
@@ -356,6 +369,7 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
 @interface FNVOptionsController ()
 @property (nonatomic) unsigned nativeW;
 @property (nonatomic) unsigned nativeH;
+@property (nonatomic) unsigned fullPanelH;
 @property (nonatomic) unsigned backingW;
 @property (nonatomic) unsigned backingH;
 @property (nonatomic) int refreshHz;
@@ -416,6 +430,7 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
 
 - (instancetype)initWithNativeW:(unsigned)nativeW
                         nativeH:(unsigned)nativeH
+                     fullPanelH:(unsigned)fullPanelH
                        backingW:(unsigned)backingW
                        backingH:(unsigned)backingH
                       refreshHz:(int)refreshHz {
@@ -423,6 +438,7 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     if (self) {
         _nativeW = nativeW;
         _nativeH = nativeH;
+        _fullPanelH = fullPanelH ?: nativeH;
         _backingW = backingW;
         _backingH = backingH;
         _refreshHz = refreshHz;
@@ -447,7 +463,7 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     SkyrimOptions opts = loadSkyrimOptions(self.nativeW);
     self.savedOpts = opts;
     self.hasSavedOpts = YES;
-    return (FNVLaunchSettings){opts.renderScale, opts.upscaler, opts.antiAliasing, opts.fullscreen};
+    return (FNVLaunchSettings){opts.renderScale, opts.upscaler, opts.antiAliasing, opts.displayMode};
 }
 
 - (unsigned)selectedRenderScale {
@@ -458,7 +474,10 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
 - (void)updateOptionsPreview {
     unsigned pct = [self selectedRenderScale];
     unsigned ow = ((self.nativeW / 2u) * 2u); if (ow < 640u) ow = 640u;
-    unsigned oh = ((self.nativeH / 2u) * 2u); if (oh < 480u) oh = 480u;
+    unsigned targetH = (self.displayPopup && self.displayPopup.selectedItem.tag == FNVDisplayModeBorderlessFullscreen && self.fullPanelH > 0)
+        ? self.fullPanelH
+        : self.nativeH;
+    unsigned oh = ((targetH / 2u) * 2u); if (oh < 480u) oh = 480u;
     unsigned rw = ((ow * pct / 100u) / 2u) * 2u; if (rw < 640u) rw = 640u; if (rw > ow) rw = ow;
     unsigned rh = ((oh * pct / 100u) / 2u) * 2u; if (rh < 480u) rh = 480u; if (rh > oh) rh = oh;
     if (pct == 100u) {
@@ -469,6 +488,8 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
         self.upscalerPopup.enabled = YES;
     }
 }
+
+- (void)displayModeChanged:(id)sender { (void)sender; [self updateOptionsPreview]; }
 
 - (void)updateSkyrimDetailControlsEnabled {
     BOOL enable = (self.presetPopup.selectedItem.tag != 0);
@@ -808,7 +829,7 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     opts.fovPreset = (int)self.fovPresetPopup.selectedItem.tag;
     opts.worldFov = clampInt((int)llround(self.worldFovSlider.doubleValue), 65, 105);
     opts.firstPersonFov = clampInt((int)llround(self.firstPersonFovSlider.doubleValue), 65, 95);
-    opts.fullscreen = (self.displayPopup.selectedItem.tag != 0);
+    opts.displayMode = (FNVDisplayMode)self.displayPopup.selectedItem.tag;
     opts.mouseAcceleration = (self.mouseAccelCheck.state != NSControlStateValueOn);
     opts.skipLauncher = (self.skipLauncherCheck.state == NSControlStateValueOn);
     saveSkyrimOptions(opts);
@@ -844,14 +865,18 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     if ((envFov && envFov[0]) || (envFpFov && envFpFov[0])) {
         launchOpts.fovPreset = matchingSkyrimFovPreset(launchOpts.worldFov, launchOpts.firstPersonFov);
     }
-    if (getenv("FNV_WINDOWED")) launchOpts.fullscreen = NO;
+    const char *envBorderless = getenv("FNV_BORDERLESS");
+    if (envBorderless && envBorderless[0] && atoi(envBorderless) != 0) {
+        launchOpts.displayMode = FNVDisplayModeBorderlessFullscreen;
+    }
+    if (getenv("FNV_WINDOWED")) launchOpts.displayMode = FNVDisplayModeWindowed;
     const char *envMA = getenv("SKYRIM_MOUSE_ACCEL");
     if (envMA && envMA[0]) launchOpts.mouseAcceleration = (atoi(envMA) != 0);
 
     self.savedOpts = launchOpts;
     self.hasSavedOpts = YES;
     if (self.onPlay) {
-        self.onPlay((FNVLaunchSettings){launchOpts.renderScale, launchOpts.upscaler, launchOpts.antiAliasing, launchOpts.fullscreen});
+        self.onPlay((FNVLaunchSettings){launchOpts.renderScale, launchOpts.upscaler, launchOpts.antiAliasing, launchOpts.displayMode});
     }
 }
 
@@ -964,9 +989,17 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
 
     mkLabel(@"Display Mode:", 271);
     self.displayPopup = mkPopup(269);
-    [self.displayPopup addItemWithTitle:@"Fullscreen"]; self.displayPopup.lastItem.tag = 1;
-    [self.displayPopup addItemWithTitle:@"Windowed"]; self.displayPopup.lastItem.tag = 0;
-    [self.displayPopup selectItemWithTag:opts.fullscreen ? 1 : 0];
+    [self.displayPopup addItemWithTitle:@"Fullscreen"]; self.displayPopup.lastItem.tag = FNVDisplayModeFullscreen;
+    [self.displayPopup addItemWithTitle:(self.fullPanelH > self.nativeH) ? @"Borderless Fullscreen (Full Panel)" : @"Borderless Fullscreen"];
+    self.displayPopup.lastItem.tag = FNVDisplayModeBorderlessFullscreen;
+    [self.displayPopup addItemWithTitle:@"Windowed"]; self.displayPopup.lastItem.tag = FNVDisplayModeWindowed;
+    if (![self.displayPopup selectItemWithTag:opts.displayMode]) {
+        [self.displayPopup selectItemWithTag:FNVDisplayModeFullscreen];
+    }
+    self.displayPopup.target = self;
+    self.displayPopup.action = @selector(displayModeChanged:);
+    self.displayPopup.toolTip = @"Fullscreen uses a native macOS Space and triggers Game Mode. Borderless Fullscreen covers the full panel including beside the camera notch, but macOS Game Mode and Spaces will not engage, and Skyrim's top compass may sit behind the camera housing.";
+    [self updateOptionsPreview];
 
     mkLabel(@"FOV Preset:", 240);
     self.fovPresetPopup = mkPopup(238);

@@ -64,7 +64,7 @@ typedef struct {
     int fovPreset;               // 0=Keep FALLOUT.INI, 1=Original, 2=Expanded, 3=Wide, 4=Custom
     int worldFov;                // 75..105 (fDefaultWorldFOV)
     int firstPersonFov;          // 55..75  (fDefault1stPersonFOV)
-    BOOL fullscreen;
+    FNVDisplayMode displayMode;
     BOOL disableMouseAccel;
     BOOL nvseMode;
     BOOL skipLauncher;
@@ -367,8 +367,16 @@ static FalloutOptions loadFalloutOptions(void) {
     } else if (opts.fovPreset == 4) {
         opts.fovPreset = matchingFovPreset(opts.worldFov, opts.firstPersonFov);
     }
-    id fsObj = [ud objectForKey:prefKey(@"Fullscreen")];
-    opts.fullscreen = fsObj ? [fsObj boolValue] : YES;
+    id dmObj = [ud objectForKey:prefKey(@"DisplayMode")];
+    if (dmObj) {
+        NSInteger dm = [dmObj integerValue];
+        opts.displayMode = (dm >= FNVDisplayModeWindowed && dm <= FNVDisplayModeBorderlessFullscreen)
+            ? (FNVDisplayMode)dm
+            : FNVDisplayModeFullscreen;
+    } else {
+        id fsObj = [ud objectForKey:prefKey(@"Fullscreen")];
+        opts.displayMode = (!fsObj || [fsObj boolValue]) ? FNVDisplayModeFullscreen : FNVDisplayModeWindowed;
+    }
     id maObj = [ud objectForKey:prefKey(@"DisableMouseAccel")];
     opts.disableMouseAccel = maObj ? [maObj boolValue] : YES;
     id skObj = [ud objectForKey:prefKey(@"SkipLauncher")];
@@ -418,7 +426,11 @@ static FalloutOptions loadFalloutOptions(void) {
     const char *envNvse = getenv("FNV_SCRIPT_EXT");
     if (envNvse && envNvse[0]) opts.nvseMode = (atoi(envNvse) != 0);
 #endif
-    if (getenv("FNV_WINDOWED")) opts.fullscreen = NO;
+    const char *envBorderless = getenv("FNV_BORDERLESS");
+    if (envBorderless && envBorderless[0] && atoi(envBorderless) != 0) {
+        opts.displayMode = FNVDisplayModeBorderlessFullscreen;
+    }
+    if (getenv("FNV_WINDOWED")) opts.displayMode = FNVDisplayModeWindowed;
     return opts;
 }
 
@@ -469,7 +481,8 @@ static void saveFalloutOptions(FalloutOptions opts) {
     [ud setInteger:opts.fovPreset forKey:prefKey(@"FovPreset")];
     [ud setInteger:opts.worldFov forKey:prefKey(@"WorldFov")];
     [ud setInteger:opts.firstPersonFov forKey:prefKey(@"FirstPersonFov")];
-    [ud setBool:opts.fullscreen forKey:prefKey(@"Fullscreen")];
+    [ud setInteger:opts.displayMode forKey:prefKey(@"DisplayMode")];
+    [ud setBool:(opts.displayMode != FNVDisplayModeWindowed) forKey:prefKey(@"Fullscreen")];
     [ud setBool:opts.disableMouseAccel forKey:prefKey(@"DisableMouseAccel")];
 #ifndef FNV_GAME_FALLOUT3
     [ud setBool:opts.nvseMode forKey:prefKey(@"NVSEMode")];
@@ -481,6 +494,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
 @interface FNVOptionsController ()
 @property (nonatomic) unsigned nativeW;
 @property (nonatomic) unsigned nativeH;
+@property (nonatomic) unsigned fullPanelH;
 @property (nonatomic) unsigned backingW;
 @property (nonatomic) unsigned backingH;
 @property (nonatomic) int refreshHz;
@@ -566,6 +580,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
 
 - (instancetype)initWithNativeW:(unsigned)nativeW
                         nativeH:(unsigned)nativeH
+                     fullPanelH:(unsigned)fullPanelH
                        backingW:(unsigned)backingW
                        backingH:(unsigned)backingH
                       refreshHz:(int)refreshHz {
@@ -573,6 +588,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
     if (self) {
         _nativeW = nativeW;
         _nativeH = nativeH;
+        _fullPanelH = fullPanelH ?: nativeH;
         _backingW = backingW;
         _backingH = backingH;
         _refreshHz = refreshHz;
@@ -597,7 +613,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
     FalloutOptions opts = loadFalloutOptions();
     self.savedOpts = opts;
     self.hasSavedOpts = YES;
-    return (FNVLaunchSettings){opts.renderScale, opts.upscaler, opts.antiAliasing, opts.fullscreen};
+    return (FNVLaunchSettings){opts.renderScale, opts.upscaler, opts.antiAliasing, opts.displayMode};
 }
 
 - (void)updateDetailControlsEnabled {
@@ -629,27 +645,31 @@ static void saveFalloutOptions(FalloutOptions opts) {
     unsigned pct = (unsigned)self.scalePopup.selectedItem.tag;
     if (pct < 50u) pct = 50u;
     if (pct > 100u) pct = 100u;
-    unsigned rw = self.nativeW, rh = self.nativeH;
+    unsigned outH = (self.displayPopup && self.displayPopup.selectedItem.tag == FNVDisplayModeBorderlessFullscreen && self.fullPanelH > 0)
+        ? self.fullPanelH
+        : self.nativeH;
+    unsigned rw = self.nativeW, rh = outH;
     if (pct < 100u) {
         rw = ((self.nativeW * pct / 100u) + 1u) & ~1u;
-        rh = ((self.nativeH * pct / 100u) + 1u) & ~1u;
+        rh = ((outH * pct / 100u) + 1u) & ~1u;
         if (rw < 640u) rw = 640u;
         if (rh < 480u) rh = 480u;
     }
-    BOOL scaled = (rw != self.nativeW || rh != self.nativeH);
+    BOOL scaled = (rw != self.nativeW || rh != outH);
     self.upscalerPopup.enabled = scaled;
     if (scaled) {
         NSString *up = (self.upscalerPopup.selectedItem.tag == 1) ? @"MetalFX" : @"Bilinear";
         self.resPreviewLabel.stringValue = [NSString stringWithFormat:@"Render: %ux%u → %ux%u (%@)",
-                                            rw, rh, self.nativeW, self.nativeH, up];
+                                            rw, rh, self.nativeW, outH, up];
     } else {
         self.resPreviewLabel.stringValue = [NSString stringWithFormat:@"Render: %ux%u (Native)",
-                                            self.nativeW, self.nativeH];
+                                            self.nativeW, outH];
     }
 }
 
 - (void)scaleChanged:(id)sender { (void)sender; [self updateResolutionPreview]; }
 - (void)upscalerChanged:(id)sender { (void)sender; [self updateResolutionPreview]; }
+- (void)displayModeChanged:(id)sender { (void)sender; [self updateResolutionPreview]; }
 
 - (void)updateFovUI {
     int fp = (int)self.fovPresetPopup.selectedItem.tag;
@@ -1051,7 +1071,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
     opts.fovPreset = (int)self.fovPresetPopup.selectedItem.tag;
     opts.worldFov = clampInt((int)llround(self.worldFovSlider.doubleValue), 75, 105);
     opts.firstPersonFov = clampInt((int)llround(self.firstPersonFovSlider.doubleValue), 55, 75);
-    opts.fullscreen = (self.displayPopup.selectedItem.tag != 0);
+    opts.displayMode = (FNVDisplayMode)self.displayPopup.selectedItem.tag;
     opts.disableMouseAccel = (self.mouseAccelCheck.state == NSControlStateValueOn);
     if (self.nvseModeCheck) {
         opts.nvseMode = (self.nvseModeCheck.state == NSControlStateValueOn);
@@ -1085,7 +1105,11 @@ static void saveFalloutOptions(FalloutOptions opts) {
         opts.firstPersonFov = clampInt((int)strtol(envFpFov, NULL, 10), 55, 75);
         opts.fovPreset = matchingFovPreset(opts.worldFov, opts.firstPersonFov);
     }
-    if (getenv("FNV_WINDOWED")) opts.fullscreen = NO;
+    const char *envBorderless = getenv("FNV_BORDERLESS");
+    if (envBorderless && envBorderless[0] && atoi(envBorderless) != 0) {
+        opts.displayMode = FNVDisplayModeBorderlessFullscreen;
+    }
+    if (getenv("FNV_WINDOWED")) opts.displayMode = FNVDisplayModeWindowed;
     const char *envMA = getenv("FNV_MOUSE_ACCEL");
     if (envMA && envMA[0]) opts.disableMouseAccel = (atoi(envMA) == 0);
 #ifndef FNV_GAME_FALLOUT3
@@ -1096,7 +1120,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
     self.savedOpts = opts;
     self.hasSavedOpts = YES;
     if (self.onPlay) {
-        self.onPlay((FNVLaunchSettings){opts.renderScale, opts.upscaler, opts.antiAliasing, opts.fullscreen});
+        self.onPlay((FNVLaunchSettings){opts.renderScale, opts.upscaler, opts.antiAliasing, opts.displayMode});
     }
 }
 
@@ -1215,9 +1239,17 @@ static void saveFalloutOptions(FalloutOptions opts) {
 
     mkLabel(@"Display Mode:", 281 + extraH);
     self.displayPopup = mkPopup(279 + extraH);
-    [self.displayPopup addItemWithTitle:@"Fullscreen"]; self.displayPopup.lastItem.tag = 1;
-    [self.displayPopup addItemWithTitle:@"Windowed"]; self.displayPopup.lastItem.tag = 0;
-    [self.displayPopup selectItemWithTag:opts.fullscreen ? 1 : 0];
+    [self.displayPopup addItemWithTitle:@"Fullscreen"]; self.displayPopup.lastItem.tag = FNVDisplayModeFullscreen;
+    [self.displayPopup addItemWithTitle:(self.fullPanelH > self.nativeH) ? @"Borderless Fullscreen (Full Panel)" : @"Borderless Fullscreen"];
+    self.displayPopup.lastItem.tag = FNVDisplayModeBorderlessFullscreen;
+    [self.displayPopup addItemWithTitle:@"Windowed"]; self.displayPopup.lastItem.tag = FNVDisplayModeWindowed;
+    if (![self.displayPopup selectItemWithTag:opts.displayMode]) {
+        [self.displayPopup selectItemWithTag:FNVDisplayModeFullscreen];
+    }
+    self.displayPopup.target = self;
+    self.displayPopup.action = @selector(displayModeChanged:);
+    self.displayPopup.toolTip = @"Fullscreen uses a native macOS Space and triggers Game Mode. Borderless Fullscreen covers the full panel including beside the camera notch, but macOS Game Mode and Spaces will not engage.";
+    [self updateResolutionPreview];
 
     self.vsyncCheck = [NSButton checkboxWithTitle:@"Vertical Sync" target:nil action:nil];
     self.vsyncCheck.frame = NSMakeRect(196, 255 + extraH, 160, 18);

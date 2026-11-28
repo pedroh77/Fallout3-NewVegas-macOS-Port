@@ -556,6 +556,19 @@ static NSString *exeHash(NSURL *url) {
 }
 @end
 
+@interface FNVGameWindow : NSWindow
+@property (nonatomic) BOOL allowUnconstrainedFrame;
+@end
+
+@implementation FNVGameWindow
+- (BOOL)canBecomeKeyWindow { return YES; }
+- (BOOL)canBecomeMainWindow { return YES; }
+- (NSRect)constrainFrameRect:(NSRect)frameRect toScreen:(NSScreen *)screen {
+    if (self.allowUnconstrainedFrame) return frameRect;
+    return [super constrainFrameRect:frameRect toScreen:screen];
+}
+@end
+
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate> {
     double _mouseAccumX;
     double _mouseAccumY;
@@ -575,12 +588,14 @@ static NSString *exeHash(NSURL *url) {
 @property (nonatomic, strong) FNVHapticMotor *rightMotor;
 @property (nonatomic) BOOL hapticDualMotor;
 @property (nonatomic) BOOL cursorCaptured;
+@property (nonatomic) BOOL borderlessFullscreen;
 @property (nonatomic) id eventMonitor;
 #ifndef FNV_PROBE
 @property (nonatomic, strong) FNVOptionsController *optionsController;
 @property (nonatomic, strong) NSWindow *optionsWindow;
 @property (nonatomic) unsigned nativeW;
 @property (nonatomic) unsigned nativeH;
+@property (nonatomic) unsigned fullPanelH;
 @property (nonatomic) CGFloat screenScale;
 @property (nonatomic, strong) NSURL *logDir;
 @property (nonatomic, strong) NSURL *logURL;
@@ -883,30 +898,54 @@ static NSString *exeHash(NSURL *url) {
 }
 #endif
 
-- (void)setupGameWindowWithFullscreen:(BOOL)fullscreen scale:(CGFloat)scale screen:(NSScreen *)screen {
-    NSRect vis = screen ? screen.visibleFrame : NSMakeRect(0, 0, 1280, 720);
-    unsigned outW = fnv_output_width() ?: fnv_display_width();
-    unsigned outH = fnv_output_height() ?: fnv_display_height();
-    CGFloat w = outW / scale;
-    CGFloat h = outH / scale;
-    CGFloat fit = MIN(0.88, MIN(vis.size.width / w, (vis.size.height - 28.0) / h));
-    NSRect winRect = NSMakeRect(0, 0, floor(w * fit), floor(h * fit));
+- (void)setupGameWindowWithDisplayMode:(FNVDisplayMode)mode scale:(CGFloat)scale screen:(NSScreen *)screen {
+    const char *headlessEnv = getenv("FNV_HEADLESS");
+    BOOL isHeadless = (headlessEnv && headlessEnv[0] && headlessEnv[0] != '0');
+    BOOL borderless = (mode == FNVDisplayModeBorderlessFullscreen && !isHeadless);
+    BOOL nativeFullscreen = (mode == FNVDisplayModeFullscreen && !isHeadless);
+    self.borderlessFullscreen = borderless;
 
-    NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                              NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
-    self.window = [[NSWindow alloc] initWithContentRect:winRect
-                                              styleMask:style
-                                                backing:NSBackingStoreBuffered
-                                                  defer:NO];
+    NSRect winRect;
+    NSWindowStyleMask style;
+    if (borderless) {
+        winRect = screen ? screen.frame : NSMakeRect(0, 0, 1280, 720);
+        style = NSWindowStyleMaskBorderless;
+    } else {
+        NSRect vis = screen ? screen.visibleFrame : NSMakeRect(0, 0, 1280, 720);
+        unsigned outW = fnv_output_width() ?: fnv_display_width();
+        unsigned outH = fnv_output_height() ?: fnv_display_height();
+        CGFloat w = outW / scale;
+        CGFloat h = outH / scale;
+        CGFloat fit = MIN(0.88, MIN(vis.size.width / w, (vis.size.height - 28.0) / h));
+        winRect = NSMakeRect(0, 0, floor(w * fit), floor(h * fit));
+        style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+    }
+
+    FNVGameWindow *win = [[FNVGameWindow alloc] initWithContentRect:winRect
+                                                          styleMask:style
+                                                            backing:NSBackingStoreBuffered
+                                                              defer:NO];
+    win.allowUnconstrainedFrame = borderless;
+    self.window = win;
     self.window.title = GAME_TITLE;
     self.window.delegate = self;
-    self.window.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary;
     self.window.backgroundColor = NSColor.blackColor;
     self.window.acceptsMouseMovedEvents = YES;
+    if (borderless) {
+        self.window.level = NSNormalWindowLevel;
+        self.window.hasShadow = NO;
+        self.window.collectionBehavior = NSWindowCollectionBehaviorManaged | NSWindowCollectionBehaviorFullScreenNone;
+    } else {
+        self.window.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary;
+    }
     mainWindow = self.window;
 
-    self.gameContainer = [[FNVGameView alloc] initWithFrame:winRect];
+    unsigned outW = fnv_output_width() ?: fnv_display_width();
+    unsigned outH = fnv_output_height() ?: fnv_display_height();
+    self.gameContainer = [[FNVGameView alloc] initWithFrame:NSMakeRect(0, 0, winRect.size.width, winRect.size.height)];
     self.gameContainer.contentPixelSize = CGSizeMake(outW, outH);
+    self.gameContainer.fullscreenMode = borderless;
     self.metalView = [[FNVMetalView alloc] initWithFrame:self.gameContainer.bounds];
     self.metalView.wantsLayer = YES;
     self.gameContainer.gameView = self.metalView;
@@ -931,14 +970,18 @@ static NSString *exeHash(NSURL *url) {
         [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.metalView.trailingAnchor constant:-16],
     ]];
 
-    [self.window center];
+    if (borderless) {
+        [self.window setFrame:winRect display:YES];
+    } else {
+        [self.window center];
+    }
     [self.window makeKeyAndOrderFront:nil];
     [self.window makeFirstResponder:self.metalView];
     [NSApp activateIgnoringOtherApps:YES];
 
-    const char *headlessEnv = getenv("FNV_HEADLESS");
-    BOOL isHeadless = (headlessEnv && headlessEnv[0] && headlessEnv[0] != '0');
-    if (fullscreen && !isHeadless && !(self.window.styleMask & NSWindowStyleMaskFullScreen)) {
+    if (borderless) {
+        NSApp.presentationOptions = NSApplicationPresentationHideDock | NSApplicationPresentationHideMenuBar;
+    } else if (nativeFullscreen && !(self.window.styleMask & NSWindowStyleMaskFullScreen)) {
         setFullscreenTransitionPending(YES);
         [self.window toggleFullScreen:nil];
     }
@@ -1023,6 +1066,7 @@ static NSString *exeHash(NSURL *url) {
     CGFloat scale = screen ? screen.backingScaleFactor : 2.0;
     unsigned nativeW = 0, nativeH = 0, backingW = 0, backingH = 0;
     detectPhysicalDisplayPixels(screen, &nativeW, &nativeH, &backingW, &backingH);
+    unsigned fullPanelH = nativeH;
 
     CGFloat notchInset = 0;
     if (notchSafeWanted() && !outputSizeOverridden()) {
@@ -1050,7 +1094,16 @@ static NSString *exeHash(NSURL *url) {
 
 #ifdef FNV_PROBE
     fnv_graphics_configure(0, 0);
-    [self setupGameWindowWithFullscreen:(getenv("FNV_WINDOWED") == NULL) scale:scale screen:screen];
+    const char *envBorderless = getenv("FNV_BORDERLESS");
+    FNVDisplayMode probeMode = getenv("FNV_WINDOWED")
+        ? FNVDisplayModeWindowed
+        : ((envBorderless && envBorderless[0] && atoi(envBorderless) != 0)
+            ? FNVDisplayModeBorderlessFullscreen
+            : FNVDisplayModeFullscreen);
+    if (probeMode == FNVDisplayModeBorderlessFullscreen) {
+        fnv_display_configure(nativeW, fullPanelH);
+    }
+    [self setupGameWindowWithDisplayMode:probeMode scale:scale screen:screen];
     [self showStatus:@"Input / Metal Probe — Move mouse for R/G, W/S or controller for Blue. Cmd+Q to quit."];
     [self setCursorCapture:YES];
     NSThread *thread = [[NSThread alloc] initWithBlock:^{
@@ -1070,11 +1123,13 @@ static NSString *exeHash(NSURL *url) {
 #else
     self.nativeW = nativeW;
     self.nativeH = nativeH;
+    self.fullPanelH = fullPanelH;
     self.screenScale = scale;
     self.logDir = logDir;
     self.logURL = logURL;
     self.optionsController = [[FNVOptionsController alloc] initWithNativeW:nativeW
                                                                    nativeH:nativeH
+                                                                fullPanelH:fullPanelH
                                                                   backingW:backingW
                                                                   backingH:backingH
                                                                  refreshHz:hz];
@@ -1095,13 +1150,16 @@ static NSString *exeHash(NSURL *url) {
     NSScreen *screen = NSScreen.mainScreen ?: NSScreen.screens.firstObject;
     CGFloat scale = self.screenScale ?: 2.0;
 
-    fnv_display_configure_scaled(self.nativeW, self.nativeH, settings.renderScale);
+    unsigned targetH = (settings.displayMode == FNVDisplayModeBorderlessFullscreen && self.fullPanelH > 0)
+        ? self.fullPanelH
+        : self.nativeH;
+    fnv_display_configure_scaled(self.nativeW, targetH, settings.renderScale);
     fnv_graphics_configure(settings.upscaler, settings.antiAliasing);
     unsigned outW = fnv_output_width() ?: fnv_display_width();
     unsigned outH = fnv_output_height() ?: fnv_display_height();
 
     self.gameLaunched = YES;
-    [self setupGameWindowWithFullscreen:settings.fullscreen scale:scale screen:screen];
+    [self setupGameWindowWithDisplayMode:settings.displayMode scale:scale screen:screen];
 
     // Show the game window before dismissing the options window (so AppKit never sees
     // the last visible window close and terminates the app), and keep the options
@@ -1279,6 +1337,9 @@ static NSString *exeHash(NSURL *url) {
     (void)notification;
     [self setCursorCapture:NO];
     [self releaseAllInputs];
+    if (self.borderlessFullscreen) {
+        NSApp.presentationOptions = NSApplicationPresentationDefault;
+    }
 #ifndef FNV_PROBE
     fnv_media_active(0);
 #endif
@@ -1286,6 +1347,9 @@ static NSString *exeHash(NSURL *url) {
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
     (void)notification;
+    if (self.borderlessFullscreen) {
+        NSApp.presentationOptions = NSApplicationPresentationHideDock | NSApplicationPresentationHideMenuBar;
+    }
     if (self.window.isKeyWindow) [self setCursorCapture:YES];
 #ifndef FNV_PROBE
     fnv_media_active(1);
@@ -1300,6 +1364,9 @@ static NSString *exeHash(NSURL *url) {
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
     (void)notification;
+    if (self.borderlessFullscreen) {
+        NSApp.presentationOptions = NSApplicationPresentationDefault;
+    }
     setFullscreenTransitionPending(NO);
     [self teardownHaptics];
     [self setCursorCapture:NO];
