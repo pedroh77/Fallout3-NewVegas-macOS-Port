@@ -429,7 +429,6 @@ def main():
     p.add_argument('--steam-api-dylib', type=Path, help='optional Valve ARM64 libsteam_api.dylib to bundle in Frameworks/')
     p.add_argument('--steam-appid', default=None, help='Steam AppID written to steam_appid.txt when bundling libsteam_api.dylib')
     p.add_argument('--no-call-trace', action='store_true', help='omit per-function diagnostic ring writes')
-    p.add_argument('--with-nvse', action='store_true', help='enable experimental NVSE-lite native script extender (FNV only)')
     p.add_argument('--deployment-target', default=None, help='macOS deployment target (default: host major.0, min 14.0)')
     p.add_argument('--version', default=None, help='positive numeric app build version')
     args = p.parse_args()
@@ -445,7 +444,7 @@ def main():
     host_check = args.target == 'host-check'
     exe_sha = digest(args.exe) if (not probe and args.exe and args.exe.is_file()) else None
     script_ext_active = bool(
-        args.with_nvse and args.game == 'fnv' and not probe and not host_check and exe_sha and script_ext_patches.is_supported(exe_sha)
+        args.game == 'fnv' and not probe and not host_check and exe_sha and script_ext_patches.is_supported(exe_sha)
     )
     codec = validate_codecs(args.codec_prefix, 'macos') if args.codec_prefix else None
     if args.target == 'game' and not codec:

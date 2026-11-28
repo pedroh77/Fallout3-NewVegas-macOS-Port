@@ -861,7 +861,7 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     SkyrimOptions opts = loadSkyrimOptions(self.nativeW);
     self.workingOpts = opts;
 
-    NSRect rect = NSMakeRect(0, 0, 480, 529);
+    NSRect rect = NSMakeRect(0, 0, 480, 543);
     self.optionsWindow = [[NSWindow alloc] initWithContentRect:rect
                                                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                                                        backing:NSBackingStoreBuffered
@@ -873,7 +873,7 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
 
     NSTextField *title = [NSTextField labelWithString:@"Graphics & Input Options"];
     title.font = [NSFont boldSystemFontOfSize:15];
-    title.frame = NSMakeRect(24, 493, 432, 22);
+    title.frame = NSMakeRect(24, 507, 432, 22);
     [cv addSubview:title];
 
     NSString *dispStr = (self.backingW != self.nativeW || self.backingH != self.nativeH)
@@ -884,10 +884,10 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     NSTextField *sub = [NSTextField labelWithString:dispStr];
     sub.font = [NSFont systemFontOfSize:12];
     sub.textColor = NSColor.secondaryLabelColor;
-    sub.frame = NSMakeRect(24, 473, 432, 16);
+    sub.frame = NSMakeRect(24, 487, 432, 16);
     [cv addSubview:sub];
 
-    NSBox *sep1 = [[NSBox alloc] initWithFrame:NSMakeRect(24, 464, 432, 1)];
+    NSBox *sep1 = [[NSBox alloc] initWithFrame:NSMakeRect(24, 478, 432, 1)];
     sep1.boxType = NSBoxSeparator;
     [cv addSubview:sep1];
 
@@ -904,8 +904,8 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
         return p;
     };
 
-    mkLabel(@"Quality Preset:", 430);
-    self.presetPopup = mkPopup(428);
+    mkLabel(@"Quality Preset:", 444);
+    self.presetPopup = mkPopup(442);
     [self.presetPopup addItemWithTitle:@"Ultra"]; self.presetPopup.lastItem.tag = 4;
     [self.presetPopup addItemWithTitle:@"High (Recommended)"]; self.presetPopup.lastItem.tag = 3;
     [self.presetPopup addItemWithTitle:@"Medium"]; self.presetPopup.lastItem.tag = 2;
@@ -915,8 +915,8 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     self.presetPopup.target = self;
     self.presetPopup.action = @selector(presetChanged:);
 
-    mkLabel(@"Render Scale:", 399);
-    self.scalePopup = mkPopup(397);
+    mkLabel(@"Render Scale:", 413);
+    self.scalePopup = mkPopup(411);
     struct { NSString *label; NSInteger tag; } scaleItems[] = {
         {@"100% (Native)", 100}, {@"85% (Quality)", 85}, {@"75% (Recommended)", 75},
         {@"67% (Balanced)", 67}, {@"50% (Performance)", 50},
@@ -937,24 +937,24 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     self.resPreviewLabel = [NSTextField labelWithString:@""];
     self.resPreviewLabel.font = [NSFont systemFontOfSize:11];
     self.resPreviewLabel.textColor = NSColor.secondaryLabelColor;
-    self.resPreviewLabel.frame = NSMakeRect(198, 378, 258, 15);
+    self.resPreviewLabel.frame = NSMakeRect(198, 392, 258, 15);
     [cv addSubview:self.resPreviewLabel];
 
-    mkLabel(@"Upscaler:", 350);
-    self.upscalerPopup = mkPopup(348);
+    mkLabel(@"Upscaler:", 364);
+    self.upscalerPopup = mkPopup(362);
     [self.upscalerPopup addItemWithTitle:@"MetalFX Spatial"]; self.upscalerPopup.lastItem.tag = 1;
     [self.upscalerPopup addItemWithTitle:@"Bilinear"]; self.upscalerPopup.lastItem.tag = 0;
     [self.upscalerPopup selectItemWithTag:opts.upscaler];
 
-    mkLabel(@"Anti-Aliasing:", 319);
-    self.aaPopup = mkPopup(317);
+    mkLabel(@"Anti-Aliasing:", 333);
+    self.aaPopup = mkPopup(331);
     [self.aaPopup addItemWithTitle:@"Off"]; self.aaPopup.lastItem.tag = 0;
     [self.aaPopup addItemWithTitle:@"SMAA (Post-Process)"]; self.aaPopup.lastItem.tag = 1;
     [self.aaPopup addItemWithTitle:@"FXAA (Fast, Post-Process)"]; self.aaPopup.lastItem.tag = 2;
     [self.aaPopup selectItemWithTag:opts.antiAliasing];
 
-    mkLabel(@"Anisotropic Filtering:", 288);
-    self.anisoPopup = mkPopup(286);
+    mkLabel(@"Anisotropic Filtering:", 302);
+    self.anisoPopup = mkPopup(300);
     [self.anisoPopup addItemWithTitle:@"16 Samples (Max)"]; self.anisoPopup.lastItem.tag = 16;
     [self.anisoPopup addItemWithTitle:@"8 Samples"]; self.anisoPopup.lastItem.tag = 8;
     [self.anisoPopup addItemWithTitle:@"4 Samples"]; self.anisoPopup.lastItem.tag = 4;
@@ -962,14 +962,14 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     [self.anisoPopup addItemWithTitle:@"Off (best performance)"]; self.anisoPopup.lastItem.tag = 0;
     if (![self.anisoPopup selectItemWithTag:opts.anisotropy]) [self.anisoPopup selectItemWithTag:8];
 
-    mkLabel(@"Display Mode:", 257);
-    self.displayPopup = mkPopup(255);
+    mkLabel(@"Display Mode:", 271);
+    self.displayPopup = mkPopup(269);
     [self.displayPopup addItemWithTitle:@"Fullscreen"]; self.displayPopup.lastItem.tag = 1;
     [self.displayPopup addItemWithTitle:@"Windowed"]; self.displayPopup.lastItem.tag = 0;
     [self.displayPopup selectItemWithTag:opts.fullscreen ? 1 : 0];
 
-    mkLabel(@"FOV Preset:", 226);
-    self.fovPresetPopup = mkPopup(224);
+    mkLabel(@"FOV Preset:", 240);
+    self.fovPresetPopup = mkPopup(238);
     [self.fovPresetPopup addItemWithTitle:@"Original (65° / 65°)"]; self.fovPresetPopup.lastItem.tag = 1;
     [self.fovPresetPopup addItemWithTitle:@"Expanded (85° / 80°)"]; self.fovPresetPopup.lastItem.tag = 2;
     [self.fovPresetPopup addItemWithTitle:@"Wide (95° / 85°)"]; self.fovPresetPopup.lastItem.tag = 3;
@@ -979,9 +979,9 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     self.fovPresetPopup.target = self;
     self.fovPresetPopup.action = @selector(fovPresetChanged:);
 
-    mkLabel(@"World FOV:", 197);
+    mkLabel(@"World FOV:", 211);
     self.worldFovSlider = [NSSlider sliderWithValue:opts.worldFov minValue:65 maxValue:105 target:self action:@selector(fovSliderChanged:)];
-    self.worldFovSlider.frame = NSMakeRect(196, 194, 214, 24);
+    self.worldFovSlider.frame = NSMakeRect(196, 208, 214, 24);
     self.worldFovSlider.numberOfTickMarks = 9;
     self.worldFovSlider.allowsTickMarkValuesOnly = NO;
     self.worldFovSlider.continuous = YES;
@@ -990,12 +990,12 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     self.worldFovValueLabel = [NSTextField labelWithString:@""];
     self.worldFovValueLabel.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
     self.worldFovValueLabel.alignment = NSTextAlignmentRight;
-    self.worldFovValueLabel.frame = NSMakeRect(414, 197, 42, 20);
+    self.worldFovValueLabel.frame = NSMakeRect(414, 211, 42, 20);
     [cv addSubview:self.worldFovValueLabel];
 
-    mkLabel(@"1st-Person FOV:", 169);
+    mkLabel(@"1st-Person FOV:", 183);
     self.firstPersonFovSlider = [NSSlider sliderWithValue:opts.firstPersonFov minValue:65 maxValue:95 target:self action:@selector(fovSliderChanged:)];
-    self.firstPersonFovSlider.frame = NSMakeRect(196, 166, 214, 24);
+    self.firstPersonFovSlider.frame = NSMakeRect(196, 180, 214, 24);
     self.firstPersonFovSlider.numberOfTickMarks = 7;
     self.firstPersonFovSlider.allowsTickMarkValuesOnly = NO;
     self.firstPersonFovSlider.continuous = YES;
@@ -1004,7 +1004,7 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     self.firstPersonFovValueLabel = [NSTextField labelWithString:@""];
     self.firstPersonFovValueLabel.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
     self.firstPersonFovValueLabel.alignment = NSTextAlignmentRight;
-    self.firstPersonFovValueLabel.frame = NSMakeRect(414, 169, 42, 20);
+    self.firstPersonFovValueLabel.frame = NSMakeRect(414, 183, 42, 20);
     [cv addSubview:self.firstPersonFovValueLabel];
 
     self.fovTipLabel = [NSTextField labelWithString:@""];
@@ -1012,19 +1012,20 @@ static void saveSkyrimOptions(SkyrimOptions opts) {
     self.fovTipLabel.textColor = NSColor.secondaryLabelColor;
     self.fovTipLabel.lineBreakMode = NSLineBreakByWordWrapping;
     self.fovTipLabel.maximumNumberOfLines = 2;
-    self.fovTipLabel.frame = NSMakeRect(198, 136, 258, 26);
+    self.fovTipLabel.frame = NSMakeRect(198, 150, 258, 26);
     [cv addSubview:self.fovTipLabel];
 
     self.mouseAccelCheck = [NSButton checkboxWithTitle:@"Disable in-game mouse acceleration (smoother mouse)"
                                                 target:nil action:nil];
-    self.mouseAccelCheck.frame = NSMakeRect(24, 110, 432, 18);
+    self.mouseAccelCheck.frame = NSMakeRect(24, 124, 432, 18);
     self.mouseAccelCheck.state = opts.mouseAcceleration ? NSControlStateValueOff : NSControlStateValueOn;
     [cv addSubview:self.mouseAccelCheck];
 
-    NSTextField *mouseTip = [NSTextField labelWithString:@"Tip: for external mice, also disable Pointer Acceleration in System Settings → Mouse."];
+    NSTextField *mouseTip = [NSTextField wrappingLabelWithString:@"Tip: for external mice, also disable Pointer Acceleration in System Settings → Mouse."];
     mouseTip.font = [NSFont systemFontOfSize:11];
     mouseTip.textColor = NSColor.secondaryLabelColor;
-    mouseTip.frame = NSMakeRect(42, 92, 414, 15);
+    mouseTip.maximumNumberOfLines = 2;
+    mouseTip.frame = NSMakeRect(42, 93, 414, 28);
     [cv addSubview:mouseTip];
 
     self.skipLauncherCheck = [NSButton checkboxWithTitle:@"Skip this window on next launch (hold Option ⌥ to reopen)"

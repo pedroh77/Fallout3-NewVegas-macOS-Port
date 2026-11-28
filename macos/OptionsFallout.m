@@ -66,6 +66,7 @@ typedef struct {
     int firstPersonFov;          // 55..75  (fDefault1stPersonFOV)
     BOOL fullscreen;
     BOOL disableMouseAccel;
+    BOOL nvseMode;
     BOOL skipLauncher;
 } FalloutOptions;
 
@@ -372,6 +373,10 @@ static FalloutOptions loadFalloutOptions(void) {
     opts.disableMouseAccel = maObj ? [maObj boolValue] : YES;
     id skObj = [ud objectForKey:prefKey(@"SkipLauncher")];
     opts.skipLauncher = skObj ? [skObj boolValue] : NO;
+#ifndef FNV_GAME_FALLOUT3
+    id nvObj = [ud objectForKey:prefKey(@"NVSEMode")];
+    opts.nvseMode = nvObj ? [nvObj boolValue] : NO;
+#endif
 
     const char *envPreset = getenv("FNV_PRESET");
     if (envPreset && envPreset[0]) {
@@ -409,6 +414,10 @@ static FalloutOptions loadFalloutOptions(void) {
     }
     const char *envMA = getenv("FNV_MOUSE_ACCEL");
     if (envMA && envMA[0]) opts.disableMouseAccel = (atoi(envMA) == 0);
+#ifndef FNV_GAME_FALLOUT3
+    const char *envNvse = getenv("FNV_SCRIPT_EXT");
+    if (envNvse && envNvse[0]) opts.nvseMode = (atoi(envNvse) != 0);
+#endif
     if (getenv("FNV_WINDOWED")) opts.fullscreen = NO;
     return opts;
 }
@@ -462,6 +471,9 @@ static void saveFalloutOptions(FalloutOptions opts) {
     [ud setInteger:opts.firstPersonFov forKey:prefKey(@"FirstPersonFov")];
     [ud setBool:opts.fullscreen forKey:prefKey(@"Fullscreen")];
     [ud setBool:opts.disableMouseAccel forKey:prefKey(@"DisableMouseAccel")];
+#ifndef FNV_GAME_FALLOUT3
+    [ud setBool:opts.nvseMode forKey:prefKey(@"NVSEMode")];
+#endif
     [ud setBool:opts.skipLauncher forKey:prefKey(@"SkipLauncher")];
     [ud synchronize];
 }
@@ -496,6 +508,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
 @property (nonatomic, strong) NSTextField *firstPersonFovValueLabel;
 @property (nonatomic, strong) NSTextField *fovTipLabel;
 @property (nonatomic, strong) NSButton *mouseAccelCheck;
+@property (nonatomic, strong) NSButton *nvseModeCheck;
 @property (nonatomic, strong) NSButton *skipLauncherCheck;
 
 // Advanced sheet controls
@@ -1040,6 +1053,9 @@ static void saveFalloutOptions(FalloutOptions opts) {
     opts.firstPersonFov = clampInt((int)llround(self.firstPersonFovSlider.doubleValue), 55, 75);
     opts.fullscreen = (self.displayPopup.selectedItem.tag != 0);
     opts.disableMouseAccel = (self.mouseAccelCheck.state == NSControlStateValueOn);
+    if (self.nvseModeCheck) {
+        opts.nvseMode = (self.nvseModeCheck.state == NSControlStateValueOn);
+    }
     opts.skipLauncher = (self.skipLauncherCheck.state == NSControlStateValueOn);
     saveFalloutOptions(opts);
 
@@ -1072,6 +1088,10 @@ static void saveFalloutOptions(FalloutOptions opts) {
     if (getenv("FNV_WINDOWED")) opts.fullscreen = NO;
     const char *envMA = getenv("FNV_MOUSE_ACCEL");
     if (envMA && envMA[0]) opts.disableMouseAccel = (atoi(envMA) == 0);
+#ifndef FNV_GAME_FALLOUT3
+    const char *envNvse = getenv("FNV_SCRIPT_EXT");
+    if (envNvse && envNvse[0]) opts.nvseMode = (atoi(envNvse) != 0);
+#endif
 
     self.savedOpts = opts;
     self.hasSavedOpts = YES;
@@ -1086,7 +1106,12 @@ static void saveFalloutOptions(FalloutOptions opts) {
     FalloutOptions opts = loadFalloutOptions();
     self.workingOpts = opts;
 
-    NSRect rect = NSMakeRect(0, 0, 480, 584);
+#ifdef FNV_GAME_FALLOUT3
+    CGFloat extraH = 14;
+#else
+    CGFloat extraH = 38;
+#endif
+    NSRect rect = NSMakeRect(0, 0, 480, 584 + extraH);
     self.optionsWindow = [[NSWindow alloc] initWithContentRect:rect
                                                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                                                        backing:NSBackingStoreBuffered
@@ -1098,7 +1123,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
 
     NSTextField *title = [NSTextField labelWithString:@"Graphics & Input Options"];
     title.font = [NSFont boldSystemFontOfSize:15];
-    title.frame = NSMakeRect(24, 548, 432, 22);
+    title.frame = NSMakeRect(24, 548 + extraH, 432, 22);
     [cv addSubview:title];
 
     NSString *dispStr = (self.backingW != self.nativeW || self.backingH != self.nativeH)
@@ -1109,10 +1134,10 @@ static void saveFalloutOptions(FalloutOptions opts) {
     NSTextField *sub = [NSTextField labelWithString:dispStr];
     sub.font = [NSFont systemFontOfSize:12];
     sub.textColor = NSColor.secondaryLabelColor;
-    sub.frame = NSMakeRect(24, 528, 432, 16);
+    sub.frame = NSMakeRect(24, 528 + extraH, 432, 16);
     [cv addSubview:sub];
 
-    NSBox *sep1 = [[NSBox alloc] initWithFrame:NSMakeRect(24, 519, 432, 1)];
+    NSBox *sep1 = [[NSBox alloc] initWithFrame:NSMakeRect(24, 519 + extraH, 432, 1)];
     sep1.boxType = NSBoxSeparator;
     [cv addSubview:sep1];
 
@@ -1129,8 +1154,8 @@ static void saveFalloutOptions(FalloutOptions opts) {
         return p;
     };
 
-    mkLabel(@"Quality Preset:", 485);
-    self.presetPopup = mkPopup(483);
+    mkLabel(@"Quality Preset:", 485 + extraH);
+    self.presetPopup = mkPopup(483 + extraH);
     [self.presetPopup addItemWithTitle:@"Ultra (Recommended)"]; self.presetPopup.lastItem.tag = 4;
     [self.presetPopup addItemWithTitle:@"High"]; self.presetPopup.lastItem.tag = 3;
     [self.presetPopup addItemWithTitle:@"Medium"]; self.presetPopup.lastItem.tag = 2;
@@ -1140,8 +1165,8 @@ static void saveFalloutOptions(FalloutOptions opts) {
     self.presetPopup.target = self;
     self.presetPopup.action = @selector(presetChanged:);
 
-    mkLabel(@"Render Scale:", 454);
-    self.scalePopup = mkPopup(452);
+    mkLabel(@"Render Scale:", 454 + extraH);
+    self.scalePopup = mkPopup(452 + extraH);
     [self.scalePopup addItemWithTitle:@"100% (Native)"]; self.scalePopup.lastItem.tag = 100;
     [self.scalePopup addItemWithTitle:@"85% (Ultra Quality)"]; self.scalePopup.lastItem.tag = 85;
     [self.scalePopup addItemWithTitle:@"75% (Quality)"]; self.scalePopup.lastItem.tag = 75;
@@ -1154,26 +1179,26 @@ static void saveFalloutOptions(FalloutOptions opts) {
     self.resPreviewLabel = [NSTextField labelWithString:@""];
     self.resPreviewLabel.font = [NSFont systemFontOfSize:11];
     self.resPreviewLabel.textColor = NSColor.secondaryLabelColor;
-    self.resPreviewLabel.frame = NSMakeRect(198, 433, 258, 15);
+    self.resPreviewLabel.frame = NSMakeRect(198, 433 + extraH, 258, 15);
     [cv addSubview:self.resPreviewLabel];
 
-    mkLabel(@"Upscaler:", 405);
-    self.upscalerPopup = mkPopup(403);
+    mkLabel(@"Upscaler:", 405 + extraH);
+    self.upscalerPopup = mkPopup(403 + extraH);
     [self.upscalerPopup addItemWithTitle:@"MetalFX Spatial"]; self.upscalerPopup.lastItem.tag = 1;
     [self.upscalerPopup addItemWithTitle:@"Bilinear"]; self.upscalerPopup.lastItem.tag = 0;
     [self.upscalerPopup selectItemWithTag:opts.upscaler];
     self.upscalerPopup.target = self;
     self.upscalerPopup.action = @selector(upscalerChanged:);
 
-    mkLabel(@"Anti-Aliasing:", 374);
-    self.aaPopup = mkPopup(372);
+    mkLabel(@"Anti-Aliasing:", 374 + extraH);
+    self.aaPopup = mkPopup(372 + extraH);
     [self.aaPopup addItemWithTitle:@"Off"]; self.aaPopup.lastItem.tag = 0;
     [self.aaPopup addItemWithTitle:@"SMAA 1x (Post-Process)"]; self.aaPopup.lastItem.tag = 1;
     [self.aaPopup addItemWithTitle:@"FXAA (Post-Process)"]; self.aaPopup.lastItem.tag = 2;
     [self.aaPopup selectItemWithTag:opts.antiAliasing];
 
-    mkLabel(@"Anisotropic Filtering:", 343);
-    self.anisoPopup = mkPopup(341);
+    mkLabel(@"Anisotropic Filtering:", 343 + extraH);
+    self.anisoPopup = mkPopup(341 + extraH);
     [self.anisoPopup addItemWithTitle:@"15 Samples (Max)"]; self.anisoPopup.lastItem.tag = 15;
     [self.anisoPopup addItemWithTitle:@"8 Samples"]; self.anisoPopup.lastItem.tag = 8;
     [self.anisoPopup addItemWithTitle:@"4 Samples"]; self.anisoPopup.lastItem.tag = 4;
@@ -1181,26 +1206,26 @@ static void saveFalloutOptions(FalloutOptions opts) {
     [self.anisoPopup addItemWithTitle:@"Off (best performance)"]; self.anisoPopup.lastItem.tag = 0;
     if (![self.anisoPopup selectItemWithTag:opts.anisotropy]) [self.anisoPopup selectItemWithTag:15];
 
-    mkLabel(@"Screen Effects:", 312);
-    self.effectsPopup = mkPopup(310);
+    mkLabel(@"Screen Effects:", 312 + extraH);
+    self.effectsPopup = mkPopup(310 + extraH);
     [self.effectsPopup addItemWithTitle:@"HDR"]; self.effectsPopup.lastItem.tag = 2;
     [self.effectsPopup addItemWithTitle:@"Bloom"]; self.effectsPopup.lastItem.tag = 1;
     [self.effectsPopup addItemWithTitle:@"None"]; self.effectsPopup.lastItem.tag = 0;
     [self.effectsPopup selectItemWithTag:opts.screenEffects];
 
-    mkLabel(@"Display Mode:", 281);
-    self.displayPopup = mkPopup(279);
+    mkLabel(@"Display Mode:", 281 + extraH);
+    self.displayPopup = mkPopup(279 + extraH);
     [self.displayPopup addItemWithTitle:@"Fullscreen"]; self.displayPopup.lastItem.tag = 1;
     [self.displayPopup addItemWithTitle:@"Windowed"]; self.displayPopup.lastItem.tag = 0;
     [self.displayPopup selectItemWithTag:opts.fullscreen ? 1 : 0];
 
     self.vsyncCheck = [NSButton checkboxWithTitle:@"Vertical Sync" target:nil action:nil];
-    self.vsyncCheck.frame = NSMakeRect(196, 255, 160, 18);
+    self.vsyncCheck.frame = NSMakeRect(196, 255 + extraH, 160, 18);
     self.vsyncCheck.state = opts.vsync ? NSControlStateValueOn : NSControlStateValueOff;
     [cv addSubview:self.vsyncCheck];
 
-    mkLabel(@"FOV Preset:", 226);
-    self.fovPresetPopup = mkPopup(224);
+    mkLabel(@"FOV Preset:", 226 + extraH);
+    self.fovPresetPopup = mkPopup(224 + extraH);
     [self.fovPresetPopup addItemWithTitle:@"Original (75° / 55°)"]; self.fovPresetPopup.lastItem.tag = 1;
     [self.fovPresetPopup addItemWithTitle:@"Expanded (90° / 60°)"]; self.fovPresetPopup.lastItem.tag = 2;
     [self.fovPresetPopup addItemWithTitle:@"Wide (100° / 65°)"]; self.fovPresetPopup.lastItem.tag = 3;
@@ -1210,9 +1235,9 @@ static void saveFalloutOptions(FalloutOptions opts) {
     self.fovPresetPopup.target = self;
     self.fovPresetPopup.action = @selector(fovPresetChanged:);
 
-    mkLabel(@"World FOV:", 197);
+    mkLabel(@"World FOV:", 197 + extraH);
     self.worldFovSlider = [NSSlider sliderWithValue:opts.worldFov minValue:75 maxValue:105 target:self action:@selector(fovSliderChanged:)];
-    self.worldFovSlider.frame = NSMakeRect(196, 194, 214, 24);
+    self.worldFovSlider.frame = NSMakeRect(196, 194 + extraH, 214, 24);
     self.worldFovSlider.numberOfTickMarks = 7;
     self.worldFovSlider.allowsTickMarkValuesOnly = NO;
     self.worldFovSlider.continuous = YES;
@@ -1221,12 +1246,12 @@ static void saveFalloutOptions(FalloutOptions opts) {
     self.worldFovValueLabel = [NSTextField labelWithString:@""];
     self.worldFovValueLabel.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
     self.worldFovValueLabel.alignment = NSTextAlignmentRight;
-    self.worldFovValueLabel.frame = NSMakeRect(414, 197, 42, 20);
+    self.worldFovValueLabel.frame = NSMakeRect(414, 197 + extraH, 42, 20);
     [cv addSubview:self.worldFovValueLabel];
 
-    mkLabel(@"1st-Person FOV:", 169);
+    mkLabel(@"1st-Person FOV:", 169 + extraH);
     self.firstPersonFovSlider = [NSSlider sliderWithValue:opts.firstPersonFov minValue:55 maxValue:75 target:self action:@selector(fovSliderChanged:)];
-    self.firstPersonFovSlider.frame = NSMakeRect(196, 166, 214, 24);
+    self.firstPersonFovSlider.frame = NSMakeRect(196, 166 + extraH, 214, 24);
     self.firstPersonFovSlider.numberOfTickMarks = 5;
     self.firstPersonFovSlider.allowsTickMarkValuesOnly = NO;
     self.firstPersonFovSlider.continuous = YES;
@@ -1235,7 +1260,7 @@ static void saveFalloutOptions(FalloutOptions opts) {
     self.firstPersonFovValueLabel = [NSTextField labelWithString:@""];
     self.firstPersonFovValueLabel.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
     self.firstPersonFovValueLabel.alignment = NSTextAlignmentRight;
-    self.firstPersonFovValueLabel.frame = NSMakeRect(414, 169, 42, 20);
+    self.firstPersonFovValueLabel.frame = NSMakeRect(414, 169 + extraH, 42, 20);
     [cv addSubview:self.firstPersonFovValueLabel];
 
     self.fovTipLabel = [NSTextField labelWithString:@""];
@@ -1243,20 +1268,29 @@ static void saveFalloutOptions(FalloutOptions opts) {
     self.fovTipLabel.textColor = NSColor.secondaryLabelColor;
     self.fovTipLabel.lineBreakMode = NSLineBreakByWordWrapping;
     self.fovTipLabel.maximumNumberOfLines = 2;
-    self.fovTipLabel.frame = NSMakeRect(198, 136, 258, 26);
+    self.fovTipLabel.frame = NSMakeRect(198, 136 + extraH, 258, 26);
     [cv addSubview:self.fovTipLabel];
 
     self.mouseAccelCheck = [NSButton checkboxWithTitle:@"Disable in-game mouse acceleration (menus & camera)"
                                                 target:nil action:nil];
-    self.mouseAccelCheck.frame = NSMakeRect(24, 110, 432, 18);
+    self.mouseAccelCheck.frame = NSMakeRect(24, 110 + extraH, 432, 18);
     self.mouseAccelCheck.state = opts.disableMouseAccel ? NSControlStateValueOn : NSControlStateValueOff;
     [cv addSubview:self.mouseAccelCheck];
 
-    NSTextField *mouseTip = [NSTextField labelWithString:@"Tip: for external mice, also disable Pointer Acceleration in System Settings → Mouse."];
+    NSTextField *mouseTip = [NSTextField wrappingLabelWithString:@"Tip: for external mice, also disable Pointer Acceleration in System Settings → Mouse."];
     mouseTip.font = [NSFont systemFontOfSize:11];
     mouseTip.textColor = NSColor.secondaryLabelColor;
-    mouseTip.frame = NSMakeRect(42, 92, 414, 15);
+    mouseTip.maximumNumberOfLines = 2;
+    mouseTip.frame = NSMakeRect(42, 79 + extraH, 414, 28);
     [cv addSubview:mouseTip];
+
+#ifndef FNV_GAME_FALLOUT3
+    self.nvseModeCheck = [NSButton checkboxWithTitle:@"NVSE mode (experimental)"
+                                              target:nil action:nil];
+    self.nvseModeCheck.frame = NSMakeRect(24, 92, 432, 18);
+    self.nvseModeCheck.state = opts.nvseMode ? NSControlStateValueOn : NSControlStateValueOff;
+    [cv addSubview:self.nvseModeCheck];
+#endif
 
     self.skipLauncherCheck = [NSButton checkboxWithTitle:@"Skip this window on next launch (hold Option ⌥ to reopen)"
                                                   target:nil action:nil];
@@ -1299,6 +1333,9 @@ static void saveFalloutOptions(FalloutOptions opts) {
                           outW:(unsigned)outW
                           outH:(unsigned)outH {
     FalloutOptions opts = self.hasSavedOpts ? self.savedOpts : loadFalloutOptions();
+#ifndef FNV_GAME_FALLOUT3
+    setenv("FNV_SCRIPT_EXT", opts.nvseMode ? "1" : "0", 1);
+#endif
     NSFileManager *fm = NSFileManager.defaultManager;
 
 #ifdef FNV_GAME_FALLOUT3

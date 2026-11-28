@@ -255,13 +255,18 @@ int main(void) {
     assert(guest_call_thiscall(&cpu, FN_THIS_SUB, 100u, 2, t_args) == 115u);
     assert(REG(&cpu, R_ECX) == 0x11223344u);
 
-    // 3. Test FNV_SCRIPT_EXT=0 keeps vanilla bounds
+    // 3. Test unset and FNV_SCRIPT_EXT=0 both keep vanilla bounds
+    unsetenv("FNV_SCRIPT_EXT");
+    script_ext_init_table(0x01190910u, 0x0118e8e0u, 205u, FN_PARSE, FN_EXTRACT, FN_CONSOLE_PRINT, FN_LOOKUP_FORM);
+    assert(host_script_cmd_base == 0x01190910u);
+    assert(host_script_cmd_count == 0x280u);
+    assert(host_script_cmd_max_opcode == 0x1280u);
     setenv("FNV_SCRIPT_EXT", "0", 1);
     script_ext_init_table(0x01190910u, 0x0118e8e0u, 205u, FN_PARSE, FN_EXTRACT, FN_CONSOLE_PRINT, FN_LOOKUP_FORM);
     assert(host_script_cmd_base == 0x01190910u);
     assert(host_script_cmd_count == 0x280u);
     assert(host_script_cmd_max_opcode == 0x1280u);
-    unsetenv("FNV_SCRIPT_EXT");
+    setenv("FNV_SCRIPT_EXT", "1", 1);
 
     // 4. Populate synthetic vanilla tables in guest memory and initialize extended table
     const uint32_t v_script = 0x20000000u;

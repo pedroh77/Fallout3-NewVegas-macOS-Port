@@ -962,8 +962,7 @@ void script_ext_init_table(uint32_t vanilla_script_base,
                            uint32_t console_print_fn,
                            uint32_t lookup_form_fn) {
     const char *env = getenv("FNV_SCRIPT_EXT");
-    if (env && strcmp(env, "0") == 0) {
-        fprintf(stderr, "[nvse-lite] disabled by FNV_SCRIPT_EXT=0 (vanilla table active)\n");
+    if (!env || !env[0] || strcmp(env, "0") == 0) {
         return;
     }
 
